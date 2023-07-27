@@ -427,12 +427,10 @@ class UNetModel(nn.Module):
     :param num_res_blocks: number of residual blocks per downsample.
     :param attention_resolutions: a collection of downsample rates at which
         attention will take place. May be a set, list, or tuple.
-        For example, if this contains 4, then at 4x downsampling, attention
-        will be used.
+        For example, if this contains 4, then at 4x downsampling, attention will be used.
     :param dropout: the dropout probability.
     :param channel_mult: channel multiplier for each level of the UNet.
-    :param conv_resample: if True, use learned convolutions for upsampling and
-        downsampling.
+    :param conv_resample: if True, use learned convolutions for upsampling and downsampling.
     :param dims: determines if the signal is 1D, 2D, or 3D.
     :param num_classes: if specified (as an int), then this model will be
         class-conditional with `num_classes` classes.
@@ -444,8 +442,7 @@ class UNetModel(nn.Module):
                                of heads for upsampling. Deprecated.
     :param use_scale_shift_norm: use a FiLM-like conditioning mechanism.
     :param resblock_updown: use residual blocks for up/downsampling.
-    :param use_new_attention_order: use a different attention pattern for potentially
-                                    increased efficiency.
+    :param use_new_attention_order: use a different attention pattern for potentially increased efficiency.
     """
 
     def __init__(
@@ -575,13 +572,8 @@ class UNetModel(nn.Module):
             for nr in range(self.num_res_blocks[level]):
                 layers = [
                     ResBlock(
-                        ch,
-                        time_embed_dim,
-                        dropout,
-                        out_channels=mult * model_channels,
-                        dims=dims,
-                        use_checkpoint=use_checkpoint,
-                        use_scale_shift_norm=use_scale_shift_norm,
+                        ch, time_embed_dim, dropout, out_channels=mult * model_channels, dims=dims, 
+                        use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm,
                     )
                 ]
                 ch = mult * model_channels
@@ -602,11 +594,8 @@ class UNetModel(nn.Module):
                     if not exists(num_attention_blocks) or nr < num_attention_blocks[level]:
                         layers.append(
                             AttentionBlock(
-                                ch,
-                                use_checkpoint=use_checkpoint,
-                                num_heads=num_heads,
-                                num_head_channels=dim_head,
-                                use_new_attention_order=use_new_attention_order,
+                                ch, use_checkpoint=use_checkpoint, num_heads=num_heads,
+                                num_head_channels=dim_head, use_new_attention_order=use_new_attention_order,
                             ) if not use_spatial_transformer else SpatialTransformer(
                                 ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                                 disable_self_attn=disabled_sa, use_linear=use_linear_in_transformer,
@@ -621,13 +610,8 @@ class UNetModel(nn.Module):
                 self.input_blocks.append(
                     TimestepEmbedSequential(
                         ResBlock(
-                            ch,
-                            time_embed_dim,
-                            dropout,
-                            out_channels=out_ch,
-                            dims=dims,
-                            use_checkpoint=use_checkpoint,
-                            use_scale_shift_norm=use_scale_shift_norm,
+                            ch, time_embed_dim, dropout, out_channels=out_ch, dims=dims,
+                            use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm,
                             down=True,
                         )
                         if resblock_updown
@@ -651,31 +635,20 @@ class UNetModel(nn.Module):
             dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
         self.middle_block = TimestepEmbedSequential(
             ResBlock(
-                ch,
-                time_embed_dim,
-                dropout,
-                dims=dims,
-                use_checkpoint=use_checkpoint,
-                use_scale_shift_norm=use_scale_shift_norm,
+                ch, time_embed_dim, dropout, dims=dims,
+                use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm,
             ),
             AttentionBlock(
-                ch,
-                use_checkpoint=use_checkpoint,
-                num_heads=num_heads,
-                num_head_channels=dim_head,
-                use_new_attention_order=use_new_attention_order,
+                ch, use_checkpoint=use_checkpoint, num_heads=num_heads,
+                num_head_channels=dim_head, use_new_attention_order=use_new_attention_order,
             ) if not use_spatial_transformer else SpatialTransformer(  # always uses a self-attn
-                            ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
-                            disable_self_attn=disable_middle_self_attn, use_linear=use_linear_in_transformer,
-                            use_checkpoint=use_checkpoint
-                        ),
+                ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
+                disable_self_attn=disable_middle_self_attn, use_linear=use_linear_in_transformer,
+                use_checkpoint=use_checkpoint
+            ),
             ResBlock(
-                ch,
-                time_embed_dim,
-                dropout,
-                dims=dims,
-                use_checkpoint=use_checkpoint,
-                use_scale_shift_norm=use_scale_shift_norm,
+                ch, time_embed_dim, dropout, dims=dims,
+                use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm,
             ),
         )
         self._feature_size += ch
@@ -713,9 +686,7 @@ class UNetModel(nn.Module):
                     if not exists(num_attention_blocks) or i < num_attention_blocks[level]:
                         layers.append(
                             AttentionBlock(
-                                ch,
-                                use_checkpoint=use_checkpoint,
-                                num_heads=num_heads_upsample,
+                                ch, use_checkpoint=use_checkpoint, num_heads=num_heads_upsample,
                                 num_head_channels=dim_head,
                                 use_new_attention_order=use_new_attention_order,
                             ) if not use_spatial_transformer else SpatialTransformer(
@@ -728,13 +699,8 @@ class UNetModel(nn.Module):
                     out_ch = ch
                     layers.append(
                         ResBlock(
-                            ch,
-                            time_embed_dim,
-                            dropout,
-                            out_channels=out_ch,
-                            dims=dims,
-                            use_checkpoint=use_checkpoint,
-                            use_scale_shift_norm=use_scale_shift_norm,
+                            ch, time_embed_dim, dropout, out_channels=out_ch, dims=dims,
+                            use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm,
                             up=True,
                         )
                         if resblock_updown
@@ -781,27 +747,40 @@ class UNetModel(nn.Module):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
-        assert (y is not None) == (
-            self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
+        assert (y is not None) == (self.num_classes is not None), "must specify y if and only if the model is class-conditional"
+        
         hs = []
+        
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
-        emb = self.time_embed(t_emb)
+        emb = self.time_embed(t_emb)    # timestep을 embedding으로 만듬. 2, 1280
 
-        if self.num_classes is not None:
+        if self.num_classes is not None:    #false
             assert y.shape[0] == x.shape[0]
             emb = emb + self.label_emb(y)
-
+        
         h = x.type(self.dtype)
+
+        ### 1 ###
         for module in self.input_blocks:
-            h = module(h, emb, context)
+            h = module(h, emb, context) # 각 모듈 통과(with x, step, condition)
             hs.append(h)
+        
+        # 1) timestep embedding : 현재는 x만 통과
+        # 2) resblock : x만 통과
+        # 3) transformer : x, condition 통과
+            # - query가 x, key, value가 condition으로 cross attention.
+
+        ### 2 ###
         h = self.middle_block(h, emb, context)
+
+        ### 3 ###
         for module in self.output_blocks:
-            h = th.cat([h, hs.pop()], dim=1)
+            h = th.cat([h, hs.pop()], dim=1)    # resolution별 output 가져와서 concat
             h = module(h, emb, context)
+        
         h = h.type(x.dtype)
+
         if self.predict_codebook_ids:
             return self.id_predictor(h)
-        else:
+        else:   ###
             return self.out(h)

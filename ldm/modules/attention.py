@@ -95,26 +95,10 @@ class SpatialSelfAttention(nn.Module):
         self.in_channels = in_channels
 
         self.norm = Normalize(in_channels)
-        self.q = torch.nn.Conv2d(in_channels,
-                                 in_channels,
-                                 kernel_size=1,
-                                 stride=1,
-                                 padding=0)
-        self.k = torch.nn.Conv2d(in_channels,
-                                 in_channels,
-                                 kernel_size=1,
-                                 stride=1,
-                                 padding=0)
-        self.v = torch.nn.Conv2d(in_channels,
-                                 in_channels,
-                                 kernel_size=1,
-                                 stride=1,
-                                 padding=0)
-        self.proj_out = torch.nn.Conv2d(in_channels,
-                                        in_channels,
-                                        kernel_size=1,
-                                        stride=1,
-                                        padding=0)
+        self.q = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.k = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.v = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.proj_out = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
         h_ = x
@@ -215,9 +199,9 @@ class MemoryEfficientCrossAttention(nn.Module):
 
     def forward(self, x, context=None, mask=None):
         q = self.to_q(x)
-        context = default(context, x)
+        context = default(context, x)   #2, 4096, 320
         k = self.to_k(context)
-        v = self.to_v(context)
+        v = self.to_v(context)  # 2, 4096, 320
 
         b, _, _ = q.shape
         q, k, v = map(
@@ -226,11 +210,12 @@ class MemoryEfficientCrossAttention(nn.Module):
             .permute(0, 2, 1, 3)
             .reshape(b * self.heads, t.shape[1], self.dim_head)
             .contiguous(),
-            (q, k, v),
+            (q, k, v),  # 10, 4096, 64
         )
 
         # actually compute the attention, what we cannot get enough of
         out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=None, op=self.attention_op)
+        # 10, 4096, 64
 
         if exists(mask):
             raise NotImplementedError
@@ -239,8 +224,9 @@ class MemoryEfficientCrossAttention(nn.Module):
             .reshape(b, self.heads, out.shape[1], self.dim_head)
             .permute(0, 2, 1, 3)
             .reshape(b, out.shape[1], self.heads * self.dim_head)
-        )
-        return self.to_out(out)
+        )   # 2, 4096, 320
+
+        return self.to_out(out) #2, 4096, 320
 
 
 class BasicTransformerBlock(nn.Module):
@@ -258,8 +244,8 @@ class BasicTransformerBlock(nn.Module):
         self.attn1 = attn_cls(query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout,
                               context_dim=context_dim if self.disable_self_attn else None)  # is a self-attention if not self.disable_self_attn
         self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff)
-        self.attn2 = attn_cls(query_dim=dim, context_dim=context_dim,
-                              heads=n_heads, dim_head=d_head, dropout=dropout)  # is self-attn if context is none
+        self.attn2 = attn_cls(query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout,
+                              context_dim=context_dim)  # is self-attn if context is none
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
         self.norm3 = nn.LayerNorm(dim)
@@ -278,16 +264,13 @@ class BasicTransformerBlock(nn.Module):
 class SpatialTransformer(nn.Module):
     """
     Transformer block for image-like data.
-    First, project the input (aka embedding)
-    and reshape to b, t, d.
+    First, project the input (aka embedding) and reshape to b, t, d.
     Then apply standard transformer action.
     Finally, reshape to image
     NEW: use_linear for more efficiency instead of the 1x1 convs
     """
-    def __init__(self, in_channels, n_heads, d_head,
-                 depth=1, dropout=0., context_dim=None,
-                 disable_self_attn=False, use_linear=False,
-                 use_checkpoint=True):
+    def __init__(self, in_channels, n_heads, d_head, depth=1, dropout=0., context_dim=None,
+                 disable_self_attn=False, use_linear=False, use_checkpoint=True):
         super().__init__()
         if exists(context_dim) and not isinstance(context_dim, list):
             context_dim = [context_dim]
@@ -295,11 +278,7 @@ class SpatialTransformer(nn.Module):
         inner_dim = n_heads * d_head
         self.norm = Normalize(in_channels)
         if not use_linear:
-            self.proj_in = nn.Conv2d(in_channels,
-                                     inner_dim,
-                                     kernel_size=1,
-                                     stride=1,
-                                     padding=0)
+            self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
         else:
             self.proj_in = nn.Linear(in_channels, inner_dim)
 
@@ -321,21 +300,33 @@ class SpatialTransformer(nn.Module):
     def forward(self, x, context=None):
         # note: if no context is given, cross-attention defaults to self-attention
         if not isinstance(context, list):
-            context = [context]
+            context = [context] # 2, 77, 1024
+
         b, c, h, w = x.shape
         x_in = x
-        x = self.norm(x)
-        if not self.use_linear:
+
+        x = self.norm(x)    # groupnorm(32, 320) = 2, 320, 64, 64
+ 
+        if not self.use_linear: # false
             x = self.proj_in(x)
-        x = rearrange(x, 'b c h w -> b (h w) c').contiguous()
+
+        x = rearrange(x, 'b c h w -> b (h w) c').contiguous()   # 2, 4096, 320
+        
         if self.use_linear:
-            x = self.proj_in(x)
-        for i, block in enumerate(self.transformer_blocks):
-            x = block(x, context=context[i])
+            x = self.proj_in(x)     # linear (320 to 320) = 2, 4096, 320
+
+        for i, block in enumerate(self.transformer_blocks): # length 1개.
+            # norm - crossattention - norm - crossattention - norm - feedforward 쭉 통과
+            # crossattention(xformer 사용 시 memoryefficient attention)이 유일하게 context 처리하는 곳임. 확인하기.
+            x = block(x, context=context[i])    # 2, 4096, 320
+
         if self.use_linear:
-            x = self.proj_out(x)
-        x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w).contiguous()
+            x = self.proj_out(x)    # 2, 4096, 320
+
+        x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w).contiguous() # 2, 320, 64, 64
+
         if not self.use_linear:
             x = self.proj_out(x)
-        return x + x_in
+
+        return x + x_in     # add the processed result with original input
 

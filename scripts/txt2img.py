@@ -12,6 +12,7 @@ from pytorch_lightning import seed_everything
 from torch import autocast
 from contextlib import nullcontext
 from imwatermark import WatermarkEncoder
+import ImageReward
 
 from ldm.util import instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
@@ -53,152 +54,41 @@ def load_model_from_config(config, ckpt, device=torch.device("cuda"), verbose=Fa
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--prompt",
-        type=str,
-        nargs="?",
-        default="a professional photograph of an astronaut riding a triceratops",
-        help="the prompt to render"
-    )
-    parser.add_argument(
-        "--outdir",
-        type=str,
-        nargs="?",
-        help="dir to write results to",
-        default="outputs/txt2img-samples"
-    )
-    parser.add_argument(
-        "--steps",
-        type=int,
-        default=50,
-        help="number of ddim sampling steps",
-    )
-    parser.add_argument(
-        "--plms",
-        action='store_true',
-        help="use plms sampling",
-    )
-    parser.add_argument(
-        "--dpm",
-        action='store_true',
-        help="use DPM (2) sampler",
-    )
-    parser.add_argument(
-        "--fixed_code",
-        action='store_true',
-        help="if enabled, uses the same starting code across all samples ",
-    )
-    parser.add_argument(
-        "--ddim_eta",
-        type=float,
-        default=0.0,
-        help="ddim eta (eta=0.0 corresponds to deterministic sampling",
-    )
-    parser.add_argument(
-        "--n_iter",
-        type=int,
-        default=3,
-        help="sample this often",
-    )
-    parser.add_argument(
-        "--H",
-        type=int,
-        default=512,
-        help="image height, in pixel space",
-    )
-    parser.add_argument(
-        "--W",
-        type=int,
-        default=512,
-        help="image width, in pixel space",
-    )
-    parser.add_argument(
-        "--C",
-        type=int,
-        default=4,
-        help="latent channels",
-    )
-    parser.add_argument(
-        "--f",
-        type=int,
-        default=8,
-        help="downsampling factor, most often 8 or 16",
-    )
-    parser.add_argument(
-        "--n_samples",
-        type=int,
-        default=3,
-        help="how many samples to produce for each given prompt. A.k.a batch size",
-    )
-    parser.add_argument(
-        "--n_rows",
-        type=int,
-        default=0,
-        help="rows in the grid (default: n_samples)",
-    )
-    parser.add_argument(
-        "--scale",
-        type=float,
-        default=9.0,
-        help="unconditional guidance scale: eps = eps(x, empty) + scale * (eps(x, cond) - eps(x, empty))",
-    )
-    parser.add_argument(
-        "--from-file",
-        type=str,
-        help="if specified, load prompts from this file, separated by newlines",
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default="configs/stable-diffusion/v2-inference.yaml",
-        help="path to config which constructs model",
-    )
-    parser.add_argument(
-        "--ckpt",
-        type=str,
-        help="path to checkpoint of model",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="the seed (for reproducible sampling)",
-    )
-    parser.add_argument(
-        "--precision",
-        type=str,
-        help="evaluate at this precision",
-        choices=["full", "autocast"],
-        default="autocast"
-    )
-    parser.add_argument(
-        "--repeat",
-        type=int,
-        default=1,
-        help="repeat each prompt in file this often",
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        help="Device on which Stable Diffusion will be run",
-        choices=["cpu", "cuda"],
-        default="cpu"
-    )
-    parser.add_argument(
-        "--torchscript",
-        action='store_true',
-        help="Use TorchScript",
-    )
-    parser.add_argument(
-        "--ipex",
-        action='store_true',
-        help="Use Intel® Extension for PyTorch*",
-    )
-    parser.add_argument(
-        "--bf16",
-        action='store_true',
-        help="Use bfloat16",
-    )
+
+    parser.add_argument("--outdir", type=str, nargs="?", help="dir to write results to", default="outputs/txt2img-samples")
+    parser.add_argument("--plms", action='store_true', help="use plms sampling")
+    parser.add_argument("--dpm", action='store_true', help="use DPM (2) sampler")
+    parser.add_argument("--fixed_code", action='store_true', help="if enabled, uses the same starting code across all samples ")
+    parser.add_argument("--ddim_eta", type=float, default=0.0, help="ddim eta (eta=0.0 corresponds to deterministic sampling")
+    
+    parser.add_argument("--H", type=int, default=512, help="image height, in pixel space")
+    parser.add_argument("--W", type=int, default=512, help="image width, in pixel space")
+    parser.add_argument("--C", type=int, default=4, help="latent channels")
+    parser.add_argument("--f", type=int, default=8, help="downsampling factor, most often 8 or 16")
+    
+    parser.add_argument("--n_samples", type=int, default=1, help="how many samples to produce for each given prompt.(batch size)")
+    parser.add_argument("--scale", type=float, default=9.0,
+        help="unconditional guidance scale: eps = eps(x, empty) + scale * (eps(x, cond) - eps(x, empty))")
+    
+    parser.add_argument("--from-file", type=str, help="if specified, load prompts from this file, separated by newlines")
+    parser.add_argument("--seed", type=int, default=42, help="the seed (for reproducible sampling)")
+    parser.add_argument("--precision", type=str, default="autocast", choices=["full","autocast"])
+    parser.add_argument("--repeat", type=int, default=1, help="repeat each prompt in file this often")
+    parser.add_argument("--device", type=str, help="Device on which Stable Diffusion will be run", choices=["cpu", "cuda"], default="cuda")
+    parser.add_argument("--n_rows", type=int, default=2, help="rows in the grid (default: n_samples)")
+    parser.add_argument("--n_iter", type=int, default=4, help="sample this often")
+    
+    parser.add_argument("--steps", type=int, default=200, help="number of ddim sampling steps")
+    parser.add_argument("--ckpt", type=str, default="stable-diffusion-2-1/512-base-ema.ckpt", help="path to checkpoint of model")
+    parser.add_argument("--config", type=str, default="configs/stable-diffusion/v2-inference.yaml", help="path to config")
+    parser.add_argument("--prompt", type=str, nargs="?", help="the prompt to render",
+                        default="a professional photograph of an astronaut riding a triceratops")
+    parser.add_argument("--neg_prompt", type=str, nargs="?", help="the prompt to render",
+                        default="blood, bloody, teeth, weapon, horrible, disgusting, cruel, \
+                            violent, naked, nudity, nsfw, bikini, underwear, panties, swimsuit, \
+                            nipple, breasts, groin, penis, ass, navel, abs, muscular, \
+                            lifting a skirt, text, logo, title, watermark")
+
     opt = parser.parse_args()
     return opt
 
@@ -217,6 +107,7 @@ def main(opt):
     config = OmegaConf.load(f"{opt.config}")
     device = torch.device("cuda") if opt.device == "cuda" else torch.device("cpu")
     model = load_model_from_config(config, f"{opt.ckpt}", device)
+    # model = torch.nn.DataParellel(model)
 
     if opt.plms:
         sampler = PLMSSampler(model, device=device)
@@ -235,11 +126,11 @@ def main(opt):
 
     batch_size = opt.n_samples
     n_rows = opt.n_rows if opt.n_rows > 0 else batch_size
+
     if not opt.from_file:
         prompt = opt.prompt
         assert prompt is not None
         data = [batch_size * [prompt]]
-
     else:
         print(f"reading prompts from {opt.from_file}")
         with open(opt.from_file, "r") as f:
@@ -254,130 +145,76 @@ def main(opt):
     grid_count = len(os.listdir(outpath)) - 1
 
     start_code = None
-    if opt.fixed_code:
-        start_code = torch.randn([opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
+    # start_code를 지정하면 DDIM SAMPLING 시 랜덤latent noise가 아니라 해당 이미지에서 시작함
 
-    if opt.torchscript or opt.ipex:
-        transformer = model.cond_stage_model.model
-        unet = model.model.diffusion_model
-        decoder = model.first_stage_model.decoder
-        additional_context = torch.cpu.amp.autocast() if opt.bf16 else nullcontext()
-        shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
-
-        if opt.bf16 and not opt.torchscript and not opt.ipex:
-            raise ValueError('Bfloat16 is supported only for torchscript+ipex')
-        if opt.bf16 and unet.dtype != torch.bfloat16:
-            raise ValueError("Use configs/stable-diffusion/intel/ configs with bf16 enabled if " +
-                             "you'd like to use bfloat16 with CPU.")
-        if unet.dtype == torch.float16 and device == torch.device("cpu"):
-            raise ValueError("Use configs/stable-diffusion/intel/ configs for your model if you'd like to run it on CPU.")
-
-        if opt.ipex:
-            import intel_extension_for_pytorch as ipex
-            bf16_dtype = torch.bfloat16 if opt.bf16 else None
-            transformer = transformer.to(memory_format=torch.channels_last)
-            transformer = ipex.optimize(transformer, level="O1", inplace=True)
-
-            unet = unet.to(memory_format=torch.channels_last)
-            unet = ipex.optimize(unet, level="O1", auto_kernel_selection=True, inplace=True, dtype=bf16_dtype)
-
-            decoder = decoder.to(memory_format=torch.channels_last)
-            decoder = ipex.optimize(decoder, level="O1", auto_kernel_selection=True, inplace=True, dtype=bf16_dtype)
-
-        if opt.torchscript:
-            with torch.no_grad(), additional_context:
-                # get UNET scripted
-                if unet.use_checkpoint:
-                    raise ValueError("Gradient checkpoint won't work with tracing. " +
-                    "Use configs/stable-diffusion/intel/ configs for your model or disable checkpoint in your config.")
-
-                img_in = torch.ones(2, 4, 96, 96, dtype=torch.float32)
-                t_in = torch.ones(2, dtype=torch.int64)
-                context = torch.ones(2, 77, 1024, dtype=torch.float32)
-                scripted_unet = torch.jit.trace(unet, (img_in, t_in, context))
-                scripted_unet = torch.jit.optimize_for_inference(scripted_unet)
-                print(type(scripted_unet))
-                model.model.scripted_diffusion_model = scripted_unet
-
-                # get Decoder for first stage model scripted
-                samples_ddim = torch.ones(1, 4, 96, 96, dtype=torch.float32)
-                scripted_decoder = torch.jit.trace(decoder, (samples_ddim))
-                scripted_decoder = torch.jit.optimize_for_inference(scripted_decoder)
-                print(type(scripted_decoder))
-                model.first_stage_model.decoder = scripted_decoder
-
-        prompts = data[0]
-        print("Running a forward pass to initialize optimizations")
-        uc = None
-        if opt.scale != 1.0:
-            uc = model.get_learned_conditioning(batch_size * [""])
-        if isinstance(prompts, tuple):
-            prompts = list(prompts)
-
-        with torch.no_grad(), additional_context:
-            for _ in range(3):
-                c = model.get_learned_conditioning(prompts)
-            samples_ddim, _ = sampler.sample(S=5,
-                                             conditioning=c,
-                                             batch_size=batch_size,
-                                             shape=shape,
-                                             verbose=False,
-                                             unconditional_guidance_scale=opt.scale,
-                                             unconditional_conditioning=uc,
-                                             eta=opt.ddim_eta,
-                                             x_T=start_code)
-            print("Running a forward pass for decoder")
-            for _ in range(3):
-                x_samples_ddim = model.decode_first_stage(samples_ddim)
-
+    # inference
     precision_scope = autocast if opt.precision=="autocast" or opt.bf16 else nullcontext
-    with torch.no_grad(), \
-        precision_scope(opt.device), \
-        model.ema_scope():
-            all_samples = list()
-            for n in trange(opt.n_iter, desc="Sampling"):
-                for prompts in tqdm(data, desc="data"):
-                    uc = None
-                    if opt.scale != 1.0:
-                        uc = model.get_learned_conditioning(batch_size * [""])
-                    if isinstance(prompts, tuple):
-                        prompts = list(prompts)
-                    c = model.get_learned_conditioning(prompts)
-                    shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
-                    samples, _ = sampler.sample(S=opt.steps,
-                                                     conditioning=c,
-                                                     batch_size=opt.n_samples,
-                                                     shape=shape,
-                                                     verbose=False,
-                                                     unconditional_guidance_scale=opt.scale,
-                                                     unconditional_conditioning=uc,
-                                                     eta=opt.ddim_eta,
-                                                     x_T=start_code)
+    with torch.no_grad(), precision_scope(opt.device), model.ema_scope():
+        all_samples = list()
+        image_paths = list()
+        for n in trange(opt.n_iter, desc="Sampling"):
+            for prompts in tqdm(data, desc="data"):
+                uc = None
+                if opt.scale != 1.0:
+                    uc = model.get_learned_conditioning(batch_size * [opt.neg_prompt])  # 1,77,1024
 
-                    x_samples = model.decode_first_stage(samples)
-                    x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)
+                if isinstance(prompts, tuple):
+                    prompts = list(prompts)
+                c = model.get_learned_conditioning(prompts)
 
-                    for x_sample in x_samples:
-                        x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
-                        img = Image.fromarray(x_sample.astype(np.uint8))
-                        img = put_watermark(img, wm_encoder)
-                        img.save(os.path.join(sample_path, f"{base_count:05}.png"))
-                        base_count += 1
-                        sample_count += 1
+                shape = [opt.C, opt.H // opt.f, opt.W // opt.f]     # 4, 64, 64
+                samples, _ = sampler.sample(S=opt.steps, conditioning=c, batch_size=opt.n_samples, 
+                            shape=shape, verbose=False, unconditional_guidance_scale=opt.scale, 
+                            unconditional_conditioning=uc, eta=opt.ddim_eta, x_T=start_code)    # 1,4,64,64
+                
+                x_samples = model.decode_first_stage(samples)   # 1,3,512,512
+                x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)  # (-1,1) 에서 (0,1)로
 
-                    all_samples.append(x_samples)
+                for x_sample in x_samples:
+                    x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
+                    img = Image.fromarray(x_sample.astype(np.uint8))
+                    image_paths.append(img)
+                    img = put_watermark(img, wm_encoder)
+                    img.save(os.path.join(sample_path, f"{base_count:05}.png"))
+                    base_count += 1
+                    sample_count += 1
 
-            # additionally, save as grid
-            grid = torch.stack(all_samples, 0)
-            grid = rearrange(grid, 'n b c h w -> (n b) c h w')
-            grid = make_grid(grid, nrow=n_rows)
+                all_samples.append(x_samples)   # 이미지 당 1,3,512,512 형태로 저장됨
 
-            # to image
-            grid = 255. * rearrange(grid, 'c h w -> h w c').cpu().numpy()
-            grid = Image.fromarray(grid.astype(np.uint8))
-            grid = put_watermark(grid, wm_encoder)
-            grid.save(os.path.join(outpath, f'grid-{grid_count:04}.png'))
-            grid_count += 1
+        # additionally, save as grid
+        grid = torch.stack(all_samples, 0)
+        grid = rearrange(grid, 'n b c h w -> (n b) c h w')
+        grid = make_grid(grid, nrow=n_rows)
+
+        # to image
+        grid = 255. * rearrange(grid, 'c h w -> h w c').cpu().numpy()
+        grid = Image.fromarray(grid.astype(np.uint8))
+        grid = put_watermark(grid, wm_encoder)
+        grid.save(os.path.join(outpath, f'grid-{grid_count:04}.png'))
+        grid_count += 1
+
+
+    # scoring start
+
+    # SIMPLEST WAY
+    # 이미지 캡션 생성해서 prompt의 정확도 검증 - prompt의 정확도가 낮으면 해당 이미지에 점수를 낮게 주기
+    # imagereward로 랭킹
+    rm = ImageReward.load("ImageReward-v1.0", device=torch.device("cpu"))
+    rewards = rm.score(opt.prompt, image_paths)
+    print("Rewards:", rewards)
+
+    # TIFA로 랭킹
+
+    # IMAGESELECT
+    # QA PAIR 생성하고 그 모델을 신뢰
+    # for sample in all_samples:
+        
+    # SEETRUE
+    # or text prompt에서 answer span을 얻고, t5-xxl로 question 생성.
+
+    # ADDITIONAL
+    # token level f1 comparison으로 QA PAIR 검증. f1<0.54이면 해당 pair는 필터링함
+
 
     print(f"Your samples are ready and waiting for you here: \n{outpath} \n"
           f" \nEnjoy.")
@@ -386,3 +223,76 @@ def main(opt):
 if __name__ == "__main__":
     opt = parse_args()
     main(opt)
+
+
+
+
+# ##### start code 아래
+#     if opt.fixed_code:
+#         start_code = torch.randn([opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
+
+#     if opt.torchscript or opt.ipex:
+#         transformer = model.cond_stage_model.model
+#         unet = model.model.diffusion_model
+#         decoder = model.first_stage_model.decoder
+#         additional_context = torch.cpu.amp.autocast() if opt.bf16 else nullcontext()
+#         shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
+
+#         if opt.bf16 and not opt.torchscript and not opt.ipex:
+#             raise ValueError('Bfloat16 is supported only for torchscript+ipex')
+#         if opt.bf16 and unet.dtype != torch.bfloat16:
+#             raise ValueError("Use configs/stable-diffusion/intel/ configs with bf16 enabled if " +
+#                              "you'd like to use bfloat16 with CPU.")
+#         if unet.dtype == torch.float16 and device == torch.device("cpu"):
+#             raise ValueError("Use configs/stable-diffusion/intel/ configs for your model if you'd like to run it on CPU.")
+
+#         if opt.ipex:
+#             import intel_extension_for_pytorch as ipex
+#             bf16_dtype = torch.bfloat16 if opt.bf16 else None
+#             transformer = transformer.to(memory_format=torch.channels_last)
+#             transformer = ipex.optimize(transformer, level="O1", inplace=True)
+
+#             unet = unet.to(memory_format=torch.channels_last)
+#             unet = ipex.optimize(unet, level="O1", auto_kernel_selection=True, inplace=True, dtype=bf16_dtype)
+
+#             decoder = decoder.to(memory_format=torch.channels_last)
+#             decoder = ipex.optimize(decoder, level="O1", auto_kernel_selection=True, inplace=True, dtype=bf16_dtype)
+
+#         if opt.torchscript:
+#             with torch.no_grad(), additional_context:
+#                 # get UNET scripted
+#                 if unet.use_checkpoint:
+#                     raise ValueError("Gradient checkpoint won't work with tracing. " +
+#                     "Use configs/stable-diffusion/intel/ configs for your model or disable checkpoint in your config.")
+
+#                 img_in = torch.ones(2, 4, 96, 96, dtype=torch.float32)
+#                 t_in = torch.ones(2, dtype=torch.int64)
+#                 context = torch.ones(2, 77, 1024, dtype=torch.float32)
+#                 scripted_unet = torch.jit.trace(unet, (img_in, t_in, context))
+#                 scripted_unet = torch.jit.optimize_for_inference(scripted_unet)
+#                 print(type(scripted_unet))
+#                 model.model.scripted_diffusion_model = scripted_unet
+
+#                 # get Decoder for first stage model scripted
+#                 samples_ddim = torch.ones(1, 4, 96, 96, dtype=torch.float32)
+#                 scripted_decoder = torch.jit.trace(decoder, (samples_ddim))
+#                 scripted_decoder = torch.jit.optimize_for_inference(scripted_decoder)
+#                 print(type(scripted_decoder))
+#                 model.first_stage_model.decoder = scripted_decoder
+
+#         prompts = data[0]
+#         print("Running a forward pass to initialize optimizations")
+#         uc = None
+#         if opt.scale != 1.0:
+#             uc = model.get_learned_conditioning(batch_size * [""])
+#         if isinstance(prompts, tuple):
+#             prompts = list(prompts)
+
+#         with torch.no_grad(), additional_context:
+#             for _ in range(3):
+#                 c = model.get_learned_conditioning(prompts)
+#             samples_ddim, _ = sampler.sample(S=5, conditioning=c, batch_size=batch_size, shape=shape, verbose=False,
+#                                 unconditional_guidance_scale=opt.scale, unconditional_conditioning=uc, eta=opt.ddim_eta, x_T=start_code)
+#             print("Running a forward pass for decoder")
+#             for _ in range(3):
+#                 x_samples_ddim = model.decode_first_stage(samples_ddim)

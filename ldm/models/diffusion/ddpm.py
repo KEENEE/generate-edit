@@ -849,7 +849,7 @@ class LatentDiffusion(DDPM):
         if isinstance(cond, dict):
             # hybrid case, cond is expected to be a dict
             pass
-        else:
+        else:   ###
             if not isinstance(cond, list):
                 cond = [cond]
             key = 'c_concat' if self.model.conditioning_key == 'concat' else 'c_crossattn'
@@ -1321,7 +1321,7 @@ class DiffusionWrapper(pl.LightningModule):
         elif self.conditioning_key == 'concat':
             xc = torch.cat([x] + c_concat, dim=1)
             out = self.diffusion_model(xc, t)
-        elif self.conditioning_key == 'crossattn':
+        elif self.conditioning_key == 'crossattn':  ###
             if not self.sequential_cross_attn:
                 cc = torch.cat(c_crossattn, 1)
             else:
